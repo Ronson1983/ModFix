@@ -103,7 +103,7 @@ import shutil
 from datetime import datetime
 
 IGNORE_DEACTIVATED_FILE = True
-DEBUG = True
+DEBUG = False
 
 def insert_in_array(array, pos, value):
 	lst = array[0:pos] + [value] + array[pos:]
@@ -128,33 +128,8 @@ def dprint(input):
 	if DEBUG:
 		print(input)
 
-def recalculateCommandlist(input_array, has_normalmap):
-	dprint("recalculateCommandlist(array, " + str(has_normalmap) + ")")
-	runlist = []
-	
-	others = []
-	ids_to_delete = []
-	for idx, runs in enumerate(input_array):
-		print("re " + str(idx) + ": " + runs)
-		if re.sub('[\s+]', '', runs).startswith('run'):
-			if "\\ORFix\\ORFix" not in re.sub('[\s+]', '', runs) and "\\ORFix\\NNFix" not in re.sub('[\s+]', '', runs):
-				others.append(runs)
-	
-	if has_normalmap == True:
-		runlist.append("run = CommandList\\global\\ORFix\\ORFix")
-	else:	
-		runlist.append("run = CommandList\\global\\ORFix\\NNFix")
-			
-	if len(others) != 0:
-		for run in others:
-			runlist.append(run)
-		
-	dprint(runlist)
-	return runlist
-
-def replace_ini_content(content):
+def parse_ini(content):
 	blocks = []
-	commandLists = {}
 	lines = []
 	
 	token = content.split("\r\n")
@@ -239,19 +214,26 @@ def replace_ini_content(content):
 	data['type'] = is_type
 	data['block_name'] = last_block
 	blocks.append(data)
+	
+	return blocks
+
+def replace_ini_content(content):
+	blocks = parse_ini(content)
+	
+	commandLists = {}
 
 	# commandList verbinden
 	for blk_idx, assign_block in enumerate(blocks):
 		if 'CommandList' in assign_block['block_name']:
 			commandLists[assign_block['block_name'][1:-1]] = blk_idx
 
-	print('CommandLists')
-	print(commandLists)
+	dprint('CommandLists')
+	dprint(commandLists)
 
 	follow_blocks = []
 
 	# bearbeiten
-	print('bearbeiten')
+	dprint('bearbeiten')
 	for my_block in blocks:
 		dprint('===============================')
 		#dprint(my_block)
@@ -259,7 +241,7 @@ def replace_ini_content(content):
 		#dprint(my_block['lines'])
 					
 		if 'Texture' in my_block['block_name'] and 'Face' in my_block['block_name']: #and 'Head' in my_block['block_name']:
-			print('yips')
+			dprint('yips')
 			has_ps_t0 = False
 			for idx, edit_line in enumerate(my_block['lines']):
 				if edit_line.startswith('ps-t0'):
@@ -276,7 +258,7 @@ def replace_ini_content(content):
 				
 		for follow_block in follow_blocks:
 			if follow_block in my_block['block_name']:
-				print('follow:' + str(follow_block))
+				dprint('follow:' + str(follow_block))
 				has_ps_t0 = False
 				for idx, edit_line in enumerate(my_block['lines']):
 					if edit_line.strip().startswith('ps-t0'):
@@ -302,6 +284,10 @@ def replace_ini_content(content):
 
 def process_directory(directory):
 	global IGNORE_DEACTIVATED_FILE
+	
+	num_changed = 0
+	num_skipped = 0
+	errors = []
 	
 	for root, dirs, files in os.walk(directory):
 		for file in files:
@@ -343,12 +329,24 @@ def process_directory(directory):
 						with open(file_path, 'w', encoding='utf-8') as f:
 							f.write(new_content)
 						print(f"Geändert: {file_path}")
+						num_changed = num_changed + 1
+					else:
+						print('Bereits geändert')
+						num_skipped = num_skipped + 1
 						
 				except Exception as e:
 					print(f"Fehler: {file_path} - {str(e)}")
+					errors.append(f"Fehler: {file_path} - {str(e)}")
+					
+	return num_changed, num_skipped, errors
 
 if __name__ == "__main__":
 	current_dir = os.getcwd()
 	print(f"Ordner: {current_dir}")
-	process_directory(current_dir)
+	num_changed, num_skipped, errors = process_directory(current_dir)
+	print(f"Verändert: {num_changed} Übersprungen: {num_skipped} Fehlerhaft: {len(errors)}")
+	if len(errors) > 0:
+		print('Fehlerhaft! Bitte prüfen:')
+		for error in errors:
+			print(error)
 	print("Fertig!")
